@@ -1,0 +1,280 @@
+AWS Lambda (Memory 128 mb to 10GB, 1000 executions simultaneously, 15 mins timeout)
+=========
+Can Integration with: Cloudfront, S3, dynamodb, cloudwatch, sns,ses, api gateway, kinesis, cloudtrail
+
+* it runs in public cloud, to avoid running it in public cloud, we can add it to run in our VPC in config of function
+we can add all dependencies in single file and upload to layers in aws lambda, then we can add that layer to specific function in lambda
+Creation:
+	1) Application Name
+	2) Runtime: Nodejs, java,python,ruby,go
+	3) Processor : arm64 or x86_64
+	4) Permissions: IAM Role containing Cloud watch, s3
+TABS:
+-----
+Code source: We need to provide functions to be performed by Lambda (python, node js) directly we can edit here. java,dotnet we need to upload as deployment packages
+
+	handler: lambda_function.lambda_handler ==>like main function in c
+change this to index.lamba_handler (index is file name of index.py. default we will get lambda_function file) lamda_handler is function name, we can change this in code and same can be hardcorded in configuration
+
+Test: we need to provide our input values to code here
+Logs: clouwatch logs (we will get logs related to specific application)
+Configurations: It has role permissions, 
+
+=================================================================
+VPC Endpoints
+--------------
+Connects AWS Services privately from VPC instead of going through internet through NIC
+
+Types:
+-----
+	Interface Endpoints --> all other services (86)
+	Gateway Endpoints --> S3 and Dynamodb
+	Gateway Loadbalancer Endpoints
+
+VPC -> Endpoints -> Create
+	Search for Service
+	select VPC to which this service should be accessible
+	Select subnets in it
+	Select security Groups
+	Select Policy (Json File)
+	Create Endpoint
+=====================================================================
+Endpoint service
+================
+Name, Loadbalancer (Network or gateway), require acceptance for endpoint
+
+Commands in CLI
+	aws s3 ls --> this will list all s3 buckets going through Public internet
+	aws s3 ls --endpoint-url https://bucket.dns --region ap-south-1 ---> this directly connect endpoint instead of public internet
+
+==========================================================
+Cloud Formation -->creates stack of aws resources. we need to create template
+------------------
+Languages : Yaml or Json
+AWSCloudFormationVersion: 2010-09-09
+Description:
+Resources: 
+	MyS3Bucket:
+		Type: AWS::S3::Bucket
+		Properties
+			BucketName: "Name"
+	MySecondS3bucket:
+		Type: AWS::S3::Bucket
+		Properties
+			BucketName: "Name"
+=====================================================
+Types of Storage
+------------------
+1) DAS - Direct attached storage -> like pendrive
+2) NAS - Network attached storage -> storage attached to LAN
+3) SAN - Storage attached Network -> Servers attached to Storage LAN
+Storage Formats
+	File Level (DAS, NAS)
+		1) EFS - Linux - NFS
+		2) FSX - Windows - SMB
+	Block Level (SAN) - EBS
+	Object Storage : S3
+
+=============================================
+
+================================================
+S3
+---
+Storage Types
+	1) Standard - >3 , frequently accessed
+	2) Reduced redundancy - >3, freqeuntly accessed - noncritical
+	3) Intelligent Tiering - >3, min 30 days, unknown pattern
+	4) Standard IA - >3, min 30 days, infrequently accessed
+	5) One-Zone-IA - 1, min 30 days, infrequently accessed
+	6) Glacier - >3 , min 90 days
+	7) Deep glacier - >3, min 180 days
+	
+Uploading Object
+	Upload the objects
+	select storage
+	encryption
+	
+EVERY Object has ACLs - Object owner, public access, authenticated access
+
+Policies which we can create in AWS - SQS, VPC Endpoint, IAM, SNS, S3 Bucket policy
+
+========================================================
+Bitbucket
+====
+
+Pipeline1.yaml: 
+-----------------
+		Pipeline:
+			default:
+				-step:
+					script:
+
+			branches:
+				master:
+     				 - step: *build-and-push-step
+    				 - step: *deploy-staging-step
+			tags:
+				release-*:
+     				 - step: *build-and-push-step
+   				 - step: *deploy-prod-step
+			bookmarks:
+			pull requests:
+			custom:
+				- variables
+
+Pipeline2.yaml: 
+-----------------
+
+image: NAME
+definitions:
+	steps:
+		- step: &METHODNAME1
+			name:
+			caches:
+			services
+			scripts:
+		- step: &METHODNAME2
+			name:
+			caches:
+			services:
+			script:
+pipelines:
+	default:
+		- step: *METHODNAME3
+		- parallel:
+			- step: *METHODNAME1
+			- step: *METHODNAME2
+	branches:
+		master:
+			- step: *METHODNAME3
+			- parallel:
+				- step: *METHODNAME1
+				- step: *METHODNAME2
+		
+	 custom:
+    		deploy-mailer:
+      		- step:
+         			 name: Build and push Mailer to DockerHub
+        			 script:
+           				 - bash ./ci-scripts/docker-release.sh mailer ./services/mailer/docker/prod/Dockerfile ./services/mailer/package.json
+        			 services:
+          				 - docker
+	
+=======================================================
+CDK
+====
+
+Lifecycle: Construct -> Prepare -> Validate -> Synthesize -> Deploy
+
+
+=======================================
+GuardDuty
+==========
+Monitors all logs of CloudTrail, VPC Flow Logs, DNS Logs, S3 Data Events, Kubernetes Audit Logs and provides threat details and suspicious things along with their priorities
+===========================================================
+Code Build
+
+	Project Name, Source Provider (Codecommit, S3, GITHUB, BITBUCKET), repository, reference type (Branch/commit id, git tag), Environment (Managed Image/custom docker image), Service role, Build Timeout, VPC, Compute, Buildspec, Artifacts (S3), cloudwatch
+
+	Buildspec
+	-------------
+	version: 0.2
+
+environment_variables:
+  plaintext:
+    PHASE: "build"
+    PROJECT: "feh-2018"
+    AWS_DEFAULT_REGION: "us-west-2"
+
+phases:
+  install:
+    runtime-versions:
+      docker: 18
+      python: 3.7
+  pre_build:
+    commands:
+      - npm install
+  build:
+    commands:
+      - npm test
+  post_build:
+    commands:
+
+artifacts:
+  type: zip
+  files:
+    - _book/**/*
+    - appspec.yml
+  discard-paths: no
+
+Code deploy
+	Create application (Name, AWS Lambda/ECS/EC2)
+	Create deployment group - IAM Role, Deployment strategy (INplace/bluegreen ), Deployment settings (allatonce/halfatonce,oneattime),loadbalancer, instances, triggers(only SNS), alarms, rollback (deployment fails)
+	Create deployment - Select application, Deployment group, application from s3
+	
+		Appsec.yaml
+			version: 0.0
+			os: linux
+			files:
+			- source: /index.html
+			  destination: /var/www/html
+			hooks:
+			 ApplicationStop:
+				- location: scripts/stop_server.sh
+				  timeout: 300
+				  runas: root
+		     AfterInstall:
+				- location: scripts/after-install.sh
+				  timeout: 300
+				  runas: root
+		     BeforeInstall:
+				- location: scripts/install_dependies.sh
+				  timeout: 300
+				  runas: root
+			 ApplicationStart:
+				- location: scripts/start_server.sh
+				  timeout: 300
+				  runas: root
+			validateserver:
+				 - location: scripts/validateserver
+				   timeout: 300
+		    Beforeblocktraffic:
+			BlockTraffic
+			AfterBlockTraffic
+			BeforeAllowTraffic
+			AllowTraffic
+			AfterAllowTraffic
+			
+	
+CodePipeline
+
+	Name
+	Servicerole
+	Artifact Store (s3 location)
+	Encryption Key(AWS Managed/Customer Managed)
+	Source Provider (Code commit, ECR,S3,Github)
+		1)CodeCommit: Repo Name, Branch, change detection options (Cloudwatch events/CodePipeline)
+	Build Provider (Codebuild, Jenkins)
+	Deploy (Cloud formation, Code deploy,ECS, S3, Beanstalk)
+		1) Codedeploy: Region, App Name, Deployment Group)
+		
+	Usecases
+		CodePipeline with S3,CodeCommit,CodeDeploy
+		CodePiepline with ThirdParty (Github,Jenkins)
+		CodePipeline with AWS CodeStar to Build a pipeline in a code Project
+		CodePipeline to complie, Build and Test Code with CodeBuild
+		CodePipeline with Amazon ECS for continous Delivery of Container Based Applications to the cloud
+		CodePipeline with Beanstalk for continous delivery of Web Applications to the cloud
+		Use cloudPipeline with Lambda 
+		CodePipeline with CloudFomration
+		
+		
+	
+	
+	
+
+
+
+
+
+	

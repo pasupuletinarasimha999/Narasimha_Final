@@ -1,0 +1,364 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  paramEnvironment:
+    Description: Select the environment 
+    Type: String
+    Default: dev # by default it is 'dev' environment
+    AllowedValues: 
+      - dev
+      - prod
+      - qa
+      - uat
+    ConstraintDescription: Must be development, production, QA or UAT
+  paramInstanceType:
+    Description: Specify EC2 instance type
+    Type: String
+    Default: t2.micro # free tier eligible
+    AllowedValues:
+      - t1.micro
+      - t2.nano
+      - t2.micro
+      - t2.small
+    ConstraintDescription: Must be a valid Amazon EC2 instance type
+  paramEC2KeyPairName:
+    Description: Specify an EC2 KeyPair to enable SSH access to the instance
+    Type: AWS::EC2::KeyPair::KeyName # drop down with the list of existing key pairs will be displayed
+  paramCidrBlockForSSH:
+    Description: The IP address range that can be used to SSH to the EC2 instances
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 0.0.0.0/0
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
+  paramVpcCIDR:
+    Description: Enter the IP range (CIDR notation) for VPC
+    Type: String
+    Default: 10.192.0.0/16
+  paramPublicSubnet1CIDR:
+    Description: Enter the IP range (CIDR notation)  for the public subnet in AZ A
+    Type: String
+    Default: 10.192.10.0/24
+  paramPublicSubnet2CIDR:
+    Description: Enter the IP range (CIDR notation)  for the public subnet in AZ B
+    Type: String
+    Default: 10.192.11.0/24
+  paramPrivateSubnet1CIDR:
+    Description: Enter the IP range (CIDR notation)  for the private subnet in AZ A
+    Type: String
+    Default: 10.192.20.0/24
+  paramPrivateSubnet2CIDR:
+    Description: Enter the IP range (CIDR notation)  for the private subnet in AZ B
+    Type: String
+    Default: 10.192.21.0/24
+  paramUniqueName:
+    Description: Specify a unique name
+    Type: String
+    Default: RobbStark
+    AllowedPattern: "[\\x20-\\x7E]*"
+    ConstraintDescription: Must contain only ASCII characters
+## =================== CONDITIONS ===================
+Conditions:
+  isProd: !Equals [!Ref paramEnvironment, prod] # if prod then TRUE, otherwise FALSE       
+  isNonProd: !Not [{Condition: isProd}] # if non-prod then TRUE, otherwise FALSE  
+
+## =================== MAPPING =================== ##
+Mappings:
+  mapAWSInstanceType2Arch: # mapping table specifies the desired architecture per instance type
+    t1.micro:
+      Arch: HVM64  # ARCH is architecture type; valid values are PV64, HVM64, and HVMG2 
+    t2.nano:
+      Arch: HVM64
+    t2.micro:
+      Arch: HVM64
+    m1.xlarge:
+      Arch: HVM64
+    m2.xlarge:
+      Arch: HVM64
+    m2.2xlarge:
+      Arch: HVM64
+  mapAWSRegionArch2AMI:  # mapping table specifies the architecture specific AMIs per region
+    af-south-1:
+      HVM64: ami-064cc455f8a1ef504
+      HVMG2: NOT_SUPPORTED
+    ap-east-1:
+      HVM64: ami-f85b1989
+      HVMG2: NOT_SUPPORTED
+    ap-northeast-1:
+      HVM64: ami-0b2c2a754d5b4da22
+      HVMG2: ami-09d0e0e099ecabba2
+    ap-northeast-2:
+      HVM64: ami-0493ab99920f410fc
+      HVMG2: NOT_SUPPORTED
+    ap-northeast-3:
+      HVM64: ami-01344f6f63a4decc1
+      HVMG2: NOT_SUPPORTED
+    ap-south-1:
+      HVM64: ami-03cfb5e1fb4fac428
+      HVMG2: ami-0244c1d42815af84a
+
+## =================== RESOURCES ===================
+Resources:
+
+  # create a VPC
+  myVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref paramVpcCIDR
+      EnableDnsSupport: true # let instances in the VPC get DNS hostnames
+      EnableDnsHostnames: true # allow DNS resolution
+      Tags:
+      - Key: MasteringECS
+        Value:  !Ref paramUniqueName
+
+  # create an Internet Gateway
+  myInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: MasteringECS
+        Value:  !Ref paramUniqueName
+  # attach the Internet Gateway to the VPC
+  myVPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref myVPC
+      InternetGatewayId: !Ref myInternetGateway
+
+  # create a public route table for the VPC (will be public once it is associated with the Internet Gateway)
+  myPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref myVPC
+      Tags:
+      - Key: MasteringECS
+        Value:  !Ref paramUniqueName
+
+  # associate the public route table with the Internet Gateway
+  myPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: myVPCGatewayAttachment # myPublicRoute should be created only AFTER myVPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref myPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref myInternetGateway
+
+  # create a public subnet in AZ 1 (will be public once it is associated with public route table)
+  myPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref myVPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ] # AZ 1
+      CidrBlock: !Ref paramPublicSubnet1CIDR
+      MapPublicIpOnLaunch: true # allow instances launched in this subnet receive a public IPv4 address
+      Tags:
+      - Key: MasteringECS
+        Value:  !Ref paramUniqueName
+
+  # create a public subnet in AZ 2 (will be public once it is associated with public route table)
+  myPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref myVPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ] # AZ 2
+      CidrBlock: !Ref paramPublicSubnet2CIDR
+      MapPublicIpOnLaunch: true # allow instances launched in this subnet receive a public IPv4 address
+      Tags:
+      - Key: MasteringECS
+        Value:  !Ref paramUniqueName
+
+  # associate the public route table with the public subnet in AZ 1
+  myPublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref myPublicRouteTable
+      SubnetId: !Ref myPublicSubnetInAZ1
+  
+  # associate the public route table with the public subnet in AZ 2
+  myPublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref myPublicRouteTable
+      SubnetId: !Ref myPublicSubnetInAZ2
+
+  myEIPforNatGateway1:
+    Type: AWS::EC2::EIP
+    DependsOn: myVPCGatewayAttachment
+    Properties:
+      Domain: vpc # if the region supports EC2-Classic, the default is "standard", otherwise - "vpc"
+      Tags:
+      - Key: MasteringCF
+        Value:  !Ref paramUniqueName
+
+  # Specify an Elastic IP (EIP) address for a NAT Gateway in AZ 2
+  myEIPforNatGateway2:
+    Type: AWS::EC2::EIP
+    DependsOn: myVPCGatewayAttachment
+    Properties:
+      Domain: vpc # if the region supports EC2-Classic, the default is "standard", otherwise - "vpc"
+      Tags:
+      - Key: MasteringCF
+        Value:  !Ref paramUniqueName
+
+  # b) Create a NAT Gateway in the public subnet for AZ 1
+  myNatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt myEIPforNatGateway1.AllocationId
+      SubnetId: !Ref myPublicSubnet1
+      Tags:
+      - Key: MasteringCF
+        Value:  !Ref paramUniqueName
+
+   # Create a NAT Gateway in the public subnet for AZ 2
+  myNatGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt myEIPforNatGateway2.AllocationId
+      SubnetId: !Ref myPublicSubnet2
+      Tags:
+      - Key: MasteringCF
+        Value:  !Ref paramUniqueName
+
+  # c) Create a private route table for AZ 1
+  myPrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref myVPC
+      Tags:
+      - Key: MasteringCF
+        Value:  !Ref paramUniqueName
+
+  # Create a private route table for AZ 2
+  myPrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref myVPC
+      Tags:
+      - Key: MasteringCF
+        Value:  !Ref paramUniqueName
+
+  # d) Associate the private route table with the Nat Gateway in AZ 1
+  myPrivateRouteForAz1:
+    Type: AWS::EC2::Route
+    DependsOn: myVPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref myPrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref myNatGateway1 
+
+  #  Associate the private route table with the Nat Gateway in AZ 2
+  myPrivateRouteForAz2:
+    Type: AWS::EC2::Route
+    DependsOn: myVPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref myPrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref myNatGateway2
+
+  # e) Create a private subnet in AZ 1
+  myPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref myVPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ] # AZ 1
+      CidrBlock: !Ref paramPrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false # private subnet doesn't need public IP
+      Tags:
+      - Key: MasteringCF
+        Value:  !Ref paramUniqueName
+
+  # Create a private subnet in AZ 2
+  myPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref myVPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ] # AZ 2
+      CidrBlock: !Ref paramPrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false # private subnet doesn't need public IP
+      Tags:
+      - Key: MasteringCF
+        Value:  !Ref paramUniqueName
+
+  # f) Associate the private route table with the private subnet in AZ 1
+  myPrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref myPrivateRouteTable1
+      SubnetId: !Ref myPrivateSubnet1
+  
+  #  Associate the private route table with the private subnet in AZ 2
+  myPrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref myPrivateRouteTable2
+      SubnetId: !Ref myPrivateSubnet2
+
+  myEC2Instance: # create a new EC2 instance
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: !FindInMap 
+        - mapAWSRegionArch2AMI # get AMI (e.g. ami-015232c01a82b847b) based on region (e.g. eu-west-1) and architecture type (e.g. HVM64)
+        - !Ref 'AWS::Region'
+        - !FindInMap # get architecture type, aka "ARCH" (e.g. HVM64) based on specified instance type (e.g. t2.micro)
+          - mapAWSInstanceType2Arch
+          - !Ref paramInstanceType
+          - Arch 
+      InstanceType: !Ref paramInstanceType 
+      KeyName: !Ref paramEC2KeyPairName
+      SecurityGroups:
+        - !Ref mySecurityGroup
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          SubnetId: !GetAtt myVcpNestedStack.Outputs.outputPublicSubnetId
+          GroupSet:
+            - !GetAtt mySGNestedStack.Outputs.outputSecurityGroup
+      UserData: 
+        Fn::Base64: |
+          #!/bin/bash
+          sudo yum update
+          sudo yum -y erase java-1.7.0-openjdk.x86_64
+          sudo yum -y install java-1.8.0-openjdk.x86_64
+          sudo yum -y install java-1.8.0-openjdk-devel
+          sudo yum -y install tomcat8
+          service tomcat8 start
+          mkdir /usr/share/tomcat8/webapps/ROOT
+          touch /usr/share/tomcat8/webapps/ROOT/index.html
+          echo "Cloud Formation Tomcat8" > /usr/share/tomcat8/webapps/ROOT/index.html
+
+  myVolume: # create a new EBS volume only if environment is 'prod'
+    Type: 'AWS::EC2::Volume'
+    Condition: isProd # conditionally create EBS volume (only if environment is 'prod')
+    Properties:
+      Size: 100 # 100 GiB
+      AvailabilityZone: !GetAtt myEC2Instance.AvailabilityZone # get AZ of a new EC2 instance
+      Tags:
+        - Key: CloudFormationLab
+          Value: !Select [ 0, !Ref paramTagValues ] # output is 'JonSnow'
+  
+  myMountPoint: # attach an Amazon EBS volume to an EC2 instance only i environment is 'prod'
+    Type: 'AWS::EC2::VolumeAttachment'
+    Condition: isProd # conditionally attach EBS volume (only if environment is 'prod')
+    Properties:
+      InstanceId: !Ref myEC2Instance # ref to a new EC2 instance
+      VolumeId: !Ref myVolume # ref to a new EBS volume
+      Device: /dev/sdh
+
+  mySecurityGroup:   # create a new Security Group for SSH and HTTP access
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable SSH access via port 22 and HTTP access via port 80
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: !Ref paramCidrBlockForSSH
+      Tags:
+        - Key: MasteringCF
+          Value:  !Ref paramUniqueName

@@ -1,0 +1,377 @@
+## =================== VERSION =================== ##
+AWSTemplateFormatVersion: '2010-09-09'
+## =================== PARAMETERS =================== ##
+Parameters:
+  paramRepoName:
+    Description: A new repository name which must be unique across the calling AWS account (required)
+    Type: String
+    MinLength: 1
+    MaxLength: 100
+    AllowedPattern: '^[\w\.-]+$'
+    ConstraintDescription: Repository name is limited to 100 alphanumeric, underscore, dash, and dot
+    Default: CICDRepo
+  paramRepoDescription:
+    Description: Describe a new repository
+    Type: String
+    MaxLength: 1000
+    AllowedPattern: '^[\w \.-]+$'
+    Default: This repository is for CICD project
+    ConstraintDescription: Repository desciption is limited to 1000 alphanumeric, underscore, dash, and dot
+  paramRepoHTTPUrl:
+    Type: String
+    Description: CodeCommit repo HTTP URL. Copy and past CodeCommit's outputCloneUrlHttp here
+  paramArtifactStoreS3Location:
+    Type: String
+    Description: S3 bucket name to store CodeBuild artifacts
+    Default: bucket-for-code-build-artifacts
+  paramAppName:
+    Type: String
+    Description: Specify an application Name
+    Default: cicd-dotnet-webapp
+  paramInstanceTagValue:
+    Type: String
+    Description: Specify the value of instance tag that you want to deploy
+    Default: CICD-dev
+  paramCodeDeployApplicationName:
+    Type: String
+    Description: CodeBuild name
+    Default: myCodeDeployApplicationName
+  paramEmail:
+    Description: Your email for CodePipeline notifications
+    Type: String
+## =================== RESOURCES =================== ##
+Resources:
+  myRepo: # a new repository
+    Type: 'AWS::CodeCommit::Repository'
+    Properties:
+      RepositoryName: !Ref paramRepoName # (required)
+      RepositoryDescription: !Ref paramRepoDescription
+
+  myS3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      AccessControl: PublicRead
+      BucketName: bucket-for-code-build-artifacts
+      VersioningConfiguration:
+        Status: Enabled
+
+  myCodeBuildProject: # 
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Name: myCodeBuildProjectName
+      Description: CodeBuild for .NET Core WebApi project
+      ServiceRole: !GetAtt myCodeBuildRole.Arn
+      Artifacts:
+        Type: S3
+        Name: !Ref paramAppName
+        Location: !Ref paramArtifactStoreS3Location
+        Packaging: ZIP # need to ZIP for CodeDeploy
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+      Source: # get source code from CodeCommit repo
+        Location: !Ref paramRepoHTTPUrl
+        Type: CODECOMMIT
+      TimeoutInMinutes: 15
+
+  myCodeBuildRole: # role for CodeBuild
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: myCodeBuildRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: CodeBuildAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - 'codecommit:GitPull'
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${paramRepoName}
+              - Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+              - Action:
+                  - 's3:PutObject'
+                  - 's3:GetObject'
+                  - 's3:GetObjectVersion'
+                  - 's3:ListBucket'
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:s3:::codepipeline-${AWS::Region}-*
+                  - !Sub arn:aws:s3:::${paramArtifactStoreS3Location}/*
+                  - !Sub arn:aws:s3:::${paramArtifactStoreS3Location}
+  myCodeDeployApplication:
+    Type: 'AWS::CodeDeploy::Application'
+    Properties: 
+      ApplicationName: myCodeDeployApplicationName
+      ComputePlatform: Server # Allowed values: ECS | Lambda | Server
+
+  myCodeDeployDeploymentGroup: 
+    Type: 'AWS::CodeDeploy::DeploymentGroup'
+    Properties: 
+      DeploymentGroupName: myCodeDeployDeploymentGroupName
+      ApplicationName: !Ref myCodeDeployApplication
+      Ec2TagFilters: 
+        - Key: Name
+          Value: !Ref paramInstanceTagValue # get all EC2 instances with {Name: my-tag-value} tag
+          Type: 'KEY_AND_VALUE'
+      ServiceRoleArn: !GetAtt myCodeDeployRole.Arn
+      Deployment: 
+        Description: !Sub My CodeDeploy deployment for ${AWS::StackName}
+        IgnoreApplicationStopFailures: true
+        Revision: # info about the location of stored app artifacts
+          RevisionType: S3
+          S3Location: 
+            Bucket: !Ref paramArtifactStoreS3Location
+            Key: !Ref paramAppName
+            BundleType: Zip
+
+  myCodeDeployRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: myCodeDeployRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - codedeploy.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: myCodeDeployPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - 'ec2:DescribeInstances'
+                  - 'ec2:DescribeInstanceStatus'
+                  - 'ec2:TerminateInstances'
+                  - 'tag:GetTags'
+                  - 'tag:GetResources'
+                  - 'sns:Publish'
+                  - 'cloudwatch:DescribeAlarms'
+                  - 'cloudwatch:PutMetricAlarm'
+                Effect: Allow
+                Resource: '*'
+  myCodeBuildProject: # 
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Name: myCodeBuildProjectForCodePipeline
+      Description: CodeBuild for .NET Core WebApi project
+      ServiceRole: !Sub 'arn:aws:iam::${AWS::AccountId}:role/myCodeBuildRoleName' # created in 4-code-build.yaml
+      Artifacts:
+        Type: S3
+        Name: !Ref paramAppName
+        Location: !Ref paramArtifactStoreS3Location
+        # Packaging: ZIP # need to ZIP for CodeDeploy
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+      Source: # get source code from CodeCommit repo
+        Location: !Sub 'https://git-codecommit.${AWS::AccountId}.amazonaws.com/v1/repos/${paramRepoName}'
+        Type: CODECOMMIT
+      TimeoutInMinutes: 15
+
+  # Create a new CodeDeploy DeploymentGroups for Dev env but don't specofy 'Deployment' attribute
+  myCodeDeployDeploymentGroupForDev: 
+    Type: 'AWS::CodeDeploy::DeploymentGroup'
+    Properties: 
+      DeploymentGroupName: myCodeDeployDeploymentGroupForDevName
+      ApplicationName: !Ref paramCodeDeployApplicationName # created in 6-code-deploy.yaml
+      Ec2TagFilters: 
+        - Key: Name
+          Value: CICD-dev  # get all EC2 instances with { Name: CICD-dev } tag
+          Type: 'KEY_AND_VALUE'
+      ServiceRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/myCodeDeployRole
+
+  # Create a new CodeDeploy DeploymentGroups for Prod env but don't specofy 'Deployment' attribute
+  myCodeDeployDeploymentGroupForProd: 
+    Type: 'AWS::CodeDeploy::DeploymentGroup'
+    Properties: 
+      DeploymentGroupName: myCodeDeployDeploymentGroupForProdName
+      ApplicationName: !Ref paramCodeDeployApplicationName # created in 6-code-deploy.yaml
+      Ec2TagFilters: 
+        - Key: Name
+          Value: CICD-prod  # get all EC2 instances with { Name: CICD-prod } tag
+          Type: 'KEY_AND_VALUE'
+      ServiceRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/myCodeDeployRole
+
+  # Create a new CodePipeline
+  myCodePipeline:
+    Type: 'AWS::CodePipeline::Pipeline'
+    Properties:
+      Name:  myCodePipelineName
+      RoleArn: !GetAtt myCodePipelineRole.Arn
+      # Provide S3 bucket name that contains codebuild artifacts
+      ArtifactStore:
+        Type: S3
+        Location: !Ref paramArtifactStoreS3Location
+      Stages:
+        # Stage 1 - CodeCommit
+        - Name: StageOne-SourceCode
+          Actions:
+            - Name: StageOne-CodeCommit
+              RunOrder: 1
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              Configuration:
+                BranchName: master
+                RepositoryName: !Ref paramRepoName
+              OutputArtifacts:
+                - Name: StageOne-CodeCommit-OutputArtifacts
+        # Stage 2 - CodeBuild
+        - Name: StageTwo-Build
+          Actions:
+            - Name: StageTwo-CodeBuild
+              RunOrder: 1
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref myCodeBuildProject
+              InputArtifacts:
+                - Name: StageOne-CodeCommit-OutputArtifacts
+              OutputArtifacts:
+                - Name: StageTwo-CodeBuild-OutputArtifacts
+        # Stage 3 - CodeDeploy to Dev env
+        - Name: StageThree-Deploy-to-Dev
+          Actions:
+            - Name: StageThree-CodeDeploy-Dev
+              RunOrder: 1
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CodeDeploy
+              Configuration:
+                ApplicationName: !Ref paramCodeDeployApplicationName
+                DeploymentGroupName: !Ref myCodeDeployDeploymentGroupForDev 
+              InputArtifacts:
+                - Name: StageTwo-CodeBuild-OutputArtifacts
+        # Stage 4 - Approve deployment to Prod env via SNS notification to email
+        - Name: StageFour-Approve-Deployment-To-Prod
+          Actions:
+            - Name: StageFour-Approval
+              RunOrder: 1
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              Configuration:
+                NotificationArn: !Ref myCodePipelineSNSTopic
+                CustomData: Hey you, approve prod deployment
+        # Stage 5 - CodeDeploy to Prod env
+        - Name: StageFive-Deploy-to-Prod
+          Actions:
+            - Name: StageFive-CodeDeploy-Prod
+              RunOrder: 1
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CodeDeploy
+              Configuration:
+                ApplicationName: !Ref paramCodeDeployApplicationName
+                DeploymentGroupName: !Ref myCodeDeployDeploymentGroupForProd 
+              InputArtifacts:
+                - Name: StageTwo-CodeBuild-OutputArtifacts
+  
+  # Create a new role for CodePipeline
+  myCodePipelineRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub myCodePipelineRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: myCodePipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Permissions to access codebuild artifact object in S3 bucket
+              - Action:
+                  - 's3:DeleteObject'
+                  - 's3:GetObject'
+                  - 's3:GetObjectVersion'
+                  - 's3:ListBucket'
+                  - 's3:PutObject'
+                  - 's3:GetBucketPolicy'
+                Effect: Allow
+                Resource: 
+                  - !Sub arn:aws:s3:::${paramArtifactStoreS3Location}
+                  - !Sub arn:aws:s3:::${paramArtifactStoreS3Location}/*
+              # Permissions to publish to SNS 
+              - Action:
+                  - 'sns:Publish'
+                Effect: Allow
+                Resource: '*'
+              # Permissions to access target CodeCommit
+              - Action:
+                  - 'codecommit:ListBranches'
+                  - 'codecommit:ListRepositories'
+                  - 'codecommit:BatchGetRepositories'
+                  - 'codecommit:Get*'
+                  - 'codecommit:GitPull'
+                  - 'codecommit:UploadArchive'
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${paramRepoName}
+              # Permissions to access target CodeBuild
+              - Action:
+                  - 'codebuild:StartBuild'
+                  - 'codebuild:BatchGetBuilds'
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${myCodeBuildProject}
+                  - !Sub arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:build/${myCodeBuildProject}:*
+              # Permissions to access CodeDeploy
+              - Action:
+                  - 'codedeploy:CreateDeployment'
+                  - 'codedeploy:GetApplicationRevision'
+                  - 'codedeploy:GetDeployment'
+                  - 'codedeploy:GetDeploymentConfig'
+                  - 'codedeploy:RegisterApplicationRevision'
+                Effect: Allow
+                Resource: '*'
+
+  # Create an SNS topic for deployment approval
+  myCodePipelineSNSTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      Subscription:
+        - Endpoint: !Ref paramEmail
+          Protocol: email

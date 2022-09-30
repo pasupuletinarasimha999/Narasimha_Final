@@ -1,0 +1,196 @@
+Anonymous GET access
+------------------------
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "s3:GetObject"
+      ],
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": [
+          "*"
+        ]
+      },
+      "Resource": [
+        "arn:aws:s3:::BUCKET_NAME/*"
+      ]
+    }
+  ]
+}
+
+Anonymous GET access - match HTTP referrer
+-----------------------------------------
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "s3:GetObject"
+      ],
+      "Condition": {
+        "StringLike": {
+          "aws:Referer": [
+            "http://domain.com/*",
+            "http://www.domain.com/*"
+          ]
+        }
+      },
+       "Condition": {
+        "StringNotEquals": {
+          "aws:SourceVpce": [
+            "vpce-1111111",
+            "vpce-2222222"
+          ]
+        }
+      },
+      "Condition": {
+        "NotIpAddress": {
+          "aws:VpcSourceIp": [
+            "10.1.1.1/32",
+            "172.1.1.1/32"
+          ]
+        }
+      },
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": [
+          "*"
+        ]
+      },
+      "Resource": [
+        "arn:aws:s3:::BUCKET_NAME/*"
+      ]
+    }
+  ]
+}
+
+Full access for specific IAM user/role
+-------------------------------------
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "s3:*"
+      ],
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": [
+          "arn:aws:iam::ACCOUNT_ID:user/USERNAME_A",
+          "arn:aws:iam::ACCOUNT_ID:user/USERNAME_B",
+          "arn:aws:iam::ACCOUNT_ID:user/USERNAME_C",
+          "arn:aws:iam::ACCOUNT_ID:role/ROLE_A",
+          "arn:aws:iam::ACCOUNT_ID:role/ROLE_B",
+          "arn:aws:iam::ACCOUNT_ID:role/ROLE_C"
+        ]
+      },
+      "Resource": [
+        "arn:aws:s3:::BUCKET_NAME",
+        "arn:aws:s3:::BUCKET_NAME/*"
+      ]
+    }
+  ]
+}
+
+GET/PUT/DELETE access to specific path within a bucket
+------------------------------------------------------
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::BUCKET_NAME"
+      ]
+    },
+    {
+      "Action": [
+        "s3:DeleteObject",
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::BUCKET_NAME/BUCKET_PATH/*"
+      ]
+    }
+  ]
+}
+
+Restricted LIST & PUT/DELETE access to specific path within a bucket
+--------------------------------------------------------------------
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "s3:delimiter": ["/"],
+          "s3:prefix": ["","BUCKET_PATH/"]
+        }
+      },
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::BUCKET_NAME"
+      ]
+    },
+    {
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": ["BUCKET_PATH/BUCKET_SUB_PATH/*"]
+        }
+      },
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::BUCKET_NAME"
+      ]
+    },
+    {
+      "Action": [
+        "s3:DeleteObject",
+        "s3:PutObject"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::BUCKET_NAME/BUCKET_PATH/BUCKET_SUB_PATH/*"
+      ]
+    }
+  ]
+}
+
+Full access (and S3 console) for specific IAM users
+--------------------------------------------------
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "s3:ListAllMyBuckets"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::*"
+      ]
+    },
+    {
+      "Action": [
+        "s3:*"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::BUCKET_NAME/*"
+      ]
+    }
+  ]
+}

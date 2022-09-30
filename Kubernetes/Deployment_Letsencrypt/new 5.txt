@@ -1,0 +1,22 @@
+
+1. kubectl label node aks-agentpool-28701673-vmss00000e app=deploy1
+2. kubectl taint nodes aks-agentpool-28701673-vmss00000e type=specialnode:NoSchedule
+3. kubectl create configmap deploy1-volume --from-file=deploy1volume.conf=/home/narasimha/narasimha_practise/deploy1volume.conf -n myspace
+
+
+
+
+
+## Create new user
+```
+sudo apt install openssl
+openssl genrsa -out customer3.pem 2048
+openssl req -new -key customer3.pem -out customer3-csr.pem -subj "/CN=customer3/O=myteam/"
+openssl x509 -req -in customer3-csr.pem -CA ca.crt -CAkey ca.key -CAcreateserial -out customer3.crt -days 10000
+```
+
+## add new context
+```
+kubectl config set-credentials customer3 --client-certificate=customer3.crt --client-key=customer3.pem
+kubectl config set-context customer3 --cluster=kubernetes.newtech.academy --user customer3
+```

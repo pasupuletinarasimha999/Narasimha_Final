@@ -1,0 +1,56 @@
+regional resource
+	VPC
+	Security group
+	NACL
+	snapshots
+	CloudWatch --> Alarms --> select metric(ELB, Logs, SNS, EC2, EBS, Autoscaling) -> threshold value, days
+			   --> Billing --> threshold value, days
+			   --> cross account log sharing/ intra accounts log sharing--> Cross account sharing role, accounts
+
+	Transit gateway --> resources creation (subnets, external accounts),ASN
+	Transit gateway attachment --> Name, Gateway ID, vpc(vpc id)/vpn(customer gateway id,routing)/peering(account,region)
+	Trnasit gateway association --> associate vpc's,
+
+	Firewall --> VPC, each AZ one public subnet, Firewall policy, Deletion protection
+
+	Elastic Block Storage --> Volume size can be only increased, Volume type(General, provisional, magnetic), snapshot to volume (Volume type, Size, AZ, Encryption), Copy (Destination region, description,encrypt), modify permission (shared account, snapshot private/public)
+
+	ECS: Cluster Name, Instance type, Number of instances, Image ID, EBS, Key pair, VPC, Subnets, security grp, IAM Role, Cloudwatch
+		Task definition: Fargate/EC2 -> Name, Task role, Network mode(Bridge/awsvpc/host), Task size(Memory,CPU), Container definition (Name,image,memory limits,ports,Health check,,Resource limits), add volumes
+		Run the task in the cluster created (Select task definition, number of tasks, cluster, task placement)
+
+	ELB --> Name, vpc, Zone, subnets (atleast one public id, target grp) target grp - Instances/IP/Lamda, VPC, Health check protocol
+
+	AUTOSCALING --> Create launch template (actions -> copy template),create asg (launch template, subnets, load balancer,health check, asg group size, scaling policy,SNS)
+
+	RDS--> dbNAME, username,password, DB engine(mx.large), Storage (provisional..), multiaz, vpc,security grp, automated backup (till 35 days),maintanence window, encryption
+
+	KMS keys--> CMK (Key admin, symetric/unsymetric, singleregion/multiregion), keyname, select role/users to which key is assigned, other AWS account,
+
+	SNS --> FIFO(subscription only to SQS, topic name should end with fifo, only 300 publishes/second)/Standard (Subscription to SQS,Lambda,HTTP,SMS,Email,Mobile),encryption, Access policy (who sender and receiver),IAM Role/// retention period - 1 to 14 days, visibility lock time - 12 hours, messages stored in multi az encrypted queues
+
+	Elastic Bean stalk --> APP Name, Platform (Docker,.net,java,go,python,ruby,tomcat,node.js,glassfish), code, other options (instance type, deployment policy (all at once, half, one by one),monitoring, Loadbalncer)
+
+	Parameter store - Name, Tier (Standard {10000 parametrs, each 4kb}/Advanced{>10000 parameters, each 8kb}, type, value)
+
+	Guardduty: Threat detection in S3,Kubernetes,cloudtril, flowlogs Accounts/Users, Instances, aws resources. also triggers lambda for automated remedition and prevention
+
+	S3 - (lifecycle, website, versioning, acl, bucket policies, cors), cross region replication(desination bucket, source, prefix,storage class, version objects), bucket versioning,
+
+	LOAD BALANCER: Target Group: Instance/IP/Lambda, VPC, Port/Protocol,  Health Checks (Path, Healthy threshold, unhealthy threshold, Timeout), select targets (EC2 Instances)
+	Add target group to Loadbalancer - VPC, Public Subnets,Security grps,Add rule for new Target grp in ALB
+
+	Code Build: Project Name, Source Provider (Codecommit, S3, GITHUB, BITBUCKET), repository, reference type (Branch/commit id, git tag), Environment (Managed Image/custom docker image), Service role, Build Timeout, VPC, Compute, Buildspec, Artifacts (S3), cloudwatch
+
+	Code deploy
+		Create application (Name, AWS Lambda/ECS/EC2)
+		Create deployment group - IAM Role, Deployment strategy (INplace/bluegreen ), Deployment settings (allatonce/halfatonce,oneattime),loadbalancer, instances, triggers(only SNS), alarms, rollback (deployment fails)
+		Create deployment - Select application, Deployment group, application from s3
+
+	CodePipeline --> Servicerole,Artifact Store (s3 location),Encryption Key(AWS Managed/Customer Managed)
+				Source Provider (Code commit,ECR,S3,Github)
+		1)CodeCommit: Repo Name, Branch, change detection options (Cloudwatch events/CodePipeline)
+		2)Build Provider (Codebuild, Jenkins)
+		3)Deploy (Cloud formation, Code deploy,ECS, S3, Beanstalk)
+		4)Codedeploy: Region, App Name, Deployment Group)
+	

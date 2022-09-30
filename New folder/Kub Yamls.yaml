@@ -1,0 +1,903 @@
+Node Affinity
+===============
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-affinity
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: node-affinity
+  template:
+    metadata:
+      labels:
+        app: node-affinity
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: env
+                operator: In
+                values:
+                - dev
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+              - key: team
+                operator: In
+                values:
+                - engineering-project1
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+------------------------------------------------------------------
+Pod Affinity
+===========
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-affinity-1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pod-affinity-1
+  template:
+    metadata:
+      labels:
+        app: pod-affinity-1
+    spec:
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-affinity-2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pod-affinity-2
+  template:
+    metadata:
+      labels:
+        app: pod-affinity-2
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                    - pod-affinity-1
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: redis
+        image: redis
+        ports:
+        - name: redis-port
+          containerPort: 6379
+--------------------------------------------------------------------------
+Pod Anti-Affinity
+==================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-affinity-1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pod-affinity-1
+  template:
+    metadata:
+      labels:
+        app: pod-affinity-1
+    spec:
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-affinity-2
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: pod-affinity-2
+  template:
+    metadata:
+      labels:
+        app: pod-affinity-2
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                    - pod-affinity-1
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: redis
+        image: redis
+        ports:
+        - name: redis-port
+          containerPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-affinity-3
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: pod-affinity-3
+  template:
+    metadata:
+      labels:
+        app: pod-affinity-3
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                    - pod-affinity-1
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-affinity-4
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pod-affinity-4
+  template:
+    metadata:
+      labels:
+        app: pod-affinity-4
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                    - pod-affinity-1
+                    - pod-affinity-3
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+---
+-------------------------------------------------------------------------
+Pod Anti-Affnity-2
+=====================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-affinity-5
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pod-affinity-5
+  template:
+    metadata:
+      labels:
+        app: pod-affinity-5
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                    - pod-affinity-1
+                    - pod-affinity-3
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+---
+--------------------------------------------------------------------
+Auto-Scaling - HPA
+==================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hpa-example
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: hpa-example
+  template:
+    metadata:
+      labels:
+        app: hpa-example
+    spec:
+      containers:
+      - name: hpa-example
+        image: gcr.io/google_containers/hpa-example
+        ports:
+        - name: http-port
+          containerPort: 80
+        resources:
+          requests:
+            cpu: 200m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hpa-example
+spec:
+  ports:
+  - port: 31001
+    nodePort: 31001
+    targetPort: http-port
+    protocol: TCP
+  selector:
+    app: hpa-example
+  type: NodePort
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-example-autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hpa-example
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+--------------------------------------------------------------------------------
+Kubernetes Dashboard
+========================
+
+Create dashboard:
+```
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml
+```
+Create sample-user.yaml
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kube-system
+
+## Create user
+```
+kubectl create -f sample-user.yaml
+
+```
+
+## Get login token:
+```
+kubectl -n kube-system get secret | grep admin-user
+kubectl -n kube-system describe secret admin-user-token-<id displayed by previous command>
+```
+
+## Login to dashboard
+Go to http://api.yourdomain.com:8001/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/#!/login
+
+Login: admin
+Password: the password that is listed in ~/.kube/config (open file in editor and look for "password: ..."
+
+Choose for login token and enter the login token from the previous step
+==================================================================================================================================
+ELB TLS
+=======
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helloworld-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: helloworld
+  template:
+    metadata:
+      labels:
+        app: helloworld
+    spec:
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: helloworld-service
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:region:accountid:certificate/..." #replace this value
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+    service.beta.kubernetes.io/aws-load-balancer-connection-draining-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-connection-draining-timeout: "60"
+    service.beta.kubernetes.io/aws-load-balancer-additional-resource-tags: "environment=dev,app=helloworld"
+spec:
+  ports:
+  - name: http
+    port: 80
+    targetPort: nodejs-port
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: nodejs-port
+    protocol: TCP
+  selector:
+    app: helloworld
+  type: LoadBalancer
+---------------------------------------------------------------------------------------------------
+ETCD
+=====
+
+## HA Cluster
+```
+kops create cluster --name=kubernetes.newtech.academy --state=s3://kops-state-b429b --zones eu-west-1a,eu-west-1b,eu-west-1c --master-zones eu-west-1a,eu-west-1b,eu-west-1c --node-count=3 --node-size=t2.micro --master-size=t2.micro --dns-zone=kubernetes.newtech.academy
+```
+
+## Test backup
+Create an object (wait 15 min after creating the object to make sure it the backup ran)
+```
+kubectl create configmap readme --from-file=README.md
+```
+
+## List backups
+```
+kubectl exec -it etcd-main -n kube-system -- bash
+./etcd-manager-ctl -backup-store=s3://kops-state-b429b/kubernetes.newtech.academy/backups/etcd/main/ list-backups
+```
+-----------------------------------------------------------------------------
+Volumes
+=========
+## Create Volume in AWS
+
+```
+aws ec2 create-volume --size 10 --region your-region --availability-zone your-zone --volume-type gp2 --tag-specifications 'ResourceType=volume, Tags=[{Key= KubernetesCluster, Value=kubernetes.domain.tld}]'
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helloworld-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: helloworld
+  template:
+    metadata:
+      labels:
+        app: helloworld
+    spec:
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+        volumeMounts:
+        - mountPath: /myvol
+          name: myvolume
+      volumes:
+      - name: myvolume
+        awsElasticBlockStore:
+          volumeID: # insert AWS EBS volumeID here
+--------------------------------------------------------------------------------------
+Taints and Tolerations
+========================
+# Taint a node
+```
+kubectl taint nodes NODE-NAME type=specialnode:NoSchedule
+```
+
+# Taint a node with NoExecute
+```
+kubectl taint nodes NODE-NAME testkey=testvalue:NoExecute
+```
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tolerations-1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: tolerations-1
+  template:
+    metadata:
+      labels:
+        app: tolerations-1
+    spec:
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tolerations-2
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: tolerations-2
+  template:
+    metadata:
+      labels:
+        app: tolerations-2
+    spec:
+      tolerations:
+      - key: "type"
+        operator: "Equal"
+        value: "specialnode"
+        effect: "NoSchedule"
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+------------------------------------------------------------------------------------
+Pod Lifecycle
+===============
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: lifecycle
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lifecycle
+  template:
+    metadata:
+      labels:
+        app: lifecycle
+    spec:
+      initContainers:
+      - name:           init
+        image:          busybox
+        command:       ['sh', '-c', 'sleep 10']
+      containers:
+      - name: lifecycle-container
+        image: busybox
+        command: ['sh', '-c', 'echo $(date +%s): Running >> /timing && echo "The app is running!" && /bin/sleep 120']
+        readinessProbe:
+          exec:
+            command: ['sh', '-c', 'echo $(date +%s): readinessProbe >> /timing']
+          initialDelaySeconds: 35
+        livenessProbe:
+          exec:
+            command: ['sh', '-c', 'echo $(date +%s): livenessProbe >> /timing']
+          initialDelaySeconds: 35
+          timeoutSeconds: 30
+        lifecycle:
+          postStart:
+            exec:
+              command: ['sh', '-c', 'echo $(date +%s): postStart >> /timing && sleep 10 && echo $(date +%s): end postStart >> /timing']
+          preStop:
+            exec:
+              command: ['sh', '-c', 'echo $(date +%s): preStop >> /timing && sleep 10']
+-------------------------------------------------------------------------------------------------
+Resource Quota
+==============
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: limits
+  namespace: myspace
+spec:
+  limits:
+  - default:
+      cpu: 200m
+      memory: 512Mi
+    defaultRequest:
+      cpu: 100m
+      memory: 256Mi
+    type: Container
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: myspace
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-quota
+  namespace: myspace
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: 1Gi
+    limits.cpu: "2"
+    limits.memory: 2Gi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: object-quota
+  namespace: myspace
+spec:
+  hard:
+    configmaps: "10"
+    persistentvolumeclaims: "4"
+    replicationcontrollers: "20"
+    secrets: "10"
+    services: "10"
+    services.loadbalancers: "2"
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helloworld-deployment
+  namespace: myspace
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: helloworld
+  template:
+    metadata:
+      labels:
+        app: helloworld
+    spec:
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+        resources:
+          requests:
+            cpu: 200m
+            memory: 0.5Gi
+          limits:
+            cpu: 400m
+            memory: 1Gi
+-------------------------------------------------
+Users access
+================
+## Retrieve keys from kops
+```
+aws s3 sync s3://kops-state-b429b/kubernetes.newtech.academy/pki/private/ca/ ca-key
+aws s3 sync s3://kops-state-b429b/kubernetes.newtech.academy/pki/issued/ca/ ca-crt
+mv ca-key/*.key ca.key
+mv ca-crt/*.crt ca.crt
+```
+## Create new user
+```
+sudo apt install openssl
+openssl genrsa -out edward.pem 2048
+openssl req -new -key edward.pem -out edward-csr.pem -subj "/CN=edward/O=myteam/"
+openssl x509 -req -in edward-csr.pem -CA ca.crt -CAkey ca.key -CAcreateserial -out edward.crt -days 10000
+```
+
+## add new context
+```
+kubectl config set-credentials edward --client-certificate=edward.crt --client-key=edward.pem
+kubectl config set-context edward --cluster=kubernetes.newtech.academy --user edward
+```
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: User
+  name: "edward"
+  apiGroup: rbac.authorization.k8s.io
+
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: default
+  name: pod-writer
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "watch", "list", "create", "update", "patch", "delete"]
+- apiGroups: ["extensions", "apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: write-pods
+  namespace: default
+subjects:
+- kind: User
+  name: edward
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: pod-writer
+  apiGroup: rbac.authorization.k8s.io
+---------------------------------------------------------------------------------------------
+Service Discovery
+================
+Database.yml
+--------------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: database
+  labels:
+    app: database
+spec:
+  containers:
+  - name: mysql
+    image: mysql:5.7
+    ports:
+    - name: mysql-port
+      containerPort: 3306
+    env:
+      - name: MYSQL_ROOT_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: helloworld-secrets
+            key: rootPassword
+      - name: MYSQL_USER
+        valueFrom:
+          secretKeyRef:
+            name: helloworld-secrets
+            key: username
+      - name: MYSQL_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: helloworld-secrets
+            key: password
+      - name: MYSQL_DATABASE
+        valueFrom:
+          secretKeyRef:
+            name: helloworld-secrets
+            key: database
+
+database-service.yml
+-------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: database-service
+spec:
+  ports:
+  - port: 3306
+    protocol: TCP
+  selector:
+    app: database
+  type: NodePort
+
+Helloworld-db.yml
+----------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helloworld-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: helloworld-db
+  template:
+    metadata:
+      labels:
+        app: helloworld-db
+    spec:
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        command: ["node", "index-db.js"]
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+        env:
+          - name: MYSQL_HOST
+            value: database-service
+          - name: MYSQL_USER
+            value: root
+          - name: MYSQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: helloworld-secrets
+                key: rootPassword
+          - name: MYSQL_DATABASE
+            valueFrom:
+              secretKeyRef:
+                name: helloworld-secrets
+                key: database
+
+helloworld-db-service.yml
+--------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: helloworld-db-service
+spec:
+  ports:
+  - port: 3000
+    protocol: TCP
+  selector:
+    app: helloworld-db
+  type: NodePort
+
+Secrets.yml
+----------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: helloworld-secrets
+type: Opaque
+data:
+  username: aGVsbG93b3JsZA==
+  password: cGFzc3dvcmQ=
+  rootPassword: cm9vdHBhc3N3b3Jk
+  database: aGVsbG93b3JsZA==
+
+-------------------------------------------------------------------------------
+Pod Presets
+==============
+# Alpha status
+As long as the PodPresets is in alpha status, the following changes need to be made in kops:
+
+Add:
+```
+spec:
+  kubeAPIServer:
+    appendAdmissionPlugins:
+    - PodPreset
+    runtimeConfig:
+      settings.k8s.io/v1alpha1: "true"
+```
+
+# running the demo
+First apply the PodPresets:
+```
+kubectl create -f pod-presets.yaml
+```
+
+Then run the deployments
+```
+kubectl create -f deployments.yaml
+```
+pod-preset.yml
+--------------
+apiVersion: settings.k8s.io/v1alpha1   # you might have to change this after PodPresets become stable 
+kind: PodPreset
+metadata:
+  name: share-credential
+spec:
+  selector:
+    matchLabels:
+      app: myapp
+  env:
+    - name: MY_SECRET
+      value: "123456"
+  volumeMounts:
+    - mountPath: /share
+      name: share-volume
+  volumes:
+    - name: share-volume
+      emptyDir: {}
+
+deployment.yml
+----------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-2
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp-2
+  template:
+    metadata:
+      labels:
+        app: myapp-2
+    spec:
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+
+===================================================

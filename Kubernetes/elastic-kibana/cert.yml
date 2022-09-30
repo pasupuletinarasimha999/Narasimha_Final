@@ -1,0 +1,42 @@
+#execute below apply command and then execute cert.yaml and then apply ingress yaml
+#kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.8.0/cert-manager.yaml
+#kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.8.0/cert-manager.yaml
+#kubectl get order -A
+#kubectl get certificate -A
+#kubectl describe certificate deanpetrusek-domain-cert-prod -n istio-system
+#kubectl get events -A
+#kubectl get clusterissuer -A
+#kubectl get issuer -A
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  # different name
+  name: kibanadashboard-letsencrypt-prod
+  namespace: kube-system
+spec:
+  acme:
+    # now pointing to Let's Encrypt production API
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: pasupuletinarasimha8999@gmail.com
+    privateKeySecretRef:
+      # storing key material for the ACME account in dedicated secret
+      name: dashboard-key-prod
+    solvers:
+    - http01:
+       ingress:
+         class: nginx
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  # different name
+  name: kibanadashboardcert-prod
+  namespace: kube-system
+spec:
+  # dedicate secret for the TLS cert
+  secretName: kibanadashboard-production-certificate
+  issuerRef:
+    # referencing the production issuer
+    name: kibanadashboard-letsencrypt-prod
+  dnsNames:
+  - sample.narasimhakubernetes.xyz

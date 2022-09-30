@@ -1,0 +1,494 @@
+#Execute below commands first and then execute yaml
+#1. kubectl label node ip-172-20-36-48.ec2.internal app=deploy1
+#2. kubectl taint nodes ip-172-20-36-48.ec2.internal type=specialnode:NoSchedule
+#3. kubectl create configmap deploy1-volume --from-file=deploy1volume.conf=/home/ec2-user/kubernetes/Deployment_Letsencrypt/deploy1volume.conf -n myspace
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment1
+  namespace: myspace
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: deploy1
+  template:
+    metadata:
+      labels:
+        app: deploy1
+    spec:
+      initContainers:
+      - name: init
+        image: busybox
+        command: ['sh', '-c', 'sleep 10']
+      tolerations:
+      - key: "type"
+        operator: "Equal"
+        value: "specialnode"
+        effect: "NoSchedule"
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                  matchExpressions:
+                   - key: "app"
+                     operator: In
+                     values:
+                     - deploy1
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        env:
+           - name: POD_NAME
+             valueFrom:
+               fieldRef:
+                 fieldPath: metadata.name
+           - name: POD_NAMESPACE
+             valueFrom:
+               fieldRef:
+                 fieldPath: metadata.namespace
+           - name: MYSQL_HOST
+             value: deploy-2-service
+           - name: MYSQL_USER
+             value: deploy-2-service
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+        livenessProbe:
+          exec:
+            command: ['sh', '-c', 'echo $(date +%s): livenessProbe >> /timing']
+          initialDelaySeconds: 15
+          timeoutSeconds: 30
+        readinessProbe:
+          exec:
+            command: ['sh', '-c', 'echo $(date +%s): readinessProbe >> /timing']
+          initialDelaySeconds: 15
+          timeoutSeconds: 30
+        lifecycle:
+          postStart:
+            exec:
+              command: ['sh', '-c', 'echo $(date +%s): postStart >> /timing && sleep 10 && echo $(date +%s): end postStart >> /timing']
+          preStop:
+            exec:
+              command: ['sh', '-c', 'echo $(date +%s): preStop >> /timing && sleep 10']
+        volumeMounts:
+         - name: deploy1-volume
+           mountPath: /etc/conf.d
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 0.5Gi 
+      volumes:
+      - name: deploy1-volume
+        configMap:
+          name: deploy1-volume
+          items:
+           - key: deploy1volume.conf
+             path: deploy1volume.conf
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment2
+  namespace: myspace
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: deploy2
+  template:
+    metadata:
+      labels:
+        app: deploy2
+    spec:
+      initContainers:
+      - name: init
+        image: busybox
+        command: ['sh', '-c', 'sleep 10']
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                   - key: "app"
+                     operator: In
+                     values:
+                     - deploy1
+                topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: k8s-demo
+        image: wardviaene/k8s-demo
+        env:
+           - name: POD_NAME
+             valueFrom:
+               fieldRef:
+                 fieldPath: metadata.name
+           - name: POD_NAMESPACE
+             valueFrom:
+               fieldRef:
+                 fieldPath: metadata.namespace
+           - name: DB_USERNAME
+             valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: username
+           - name: DB_PASSWORD
+             valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: password
+        ports:
+        - name: nodejs-port
+          containerPort: 3000
+        livenessProbe:
+          httpGet:
+            path: /
+            port: nodejs-port
+          initialDelaySeconds: 15
+          timeoutSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: nodejs-port
+          initialDelaySeconds: 15
+          timeoutSeconds: 30
+        volumeMounts:
+         - name: deploy2-volume
+           mountPath: /etc/creds
+      volumes:
+      - name: deploy2-volume
+        secret:
+          secretName: db-secrets
+---
+apiVersion: v1
+data:
+  username: YWRtaW4=
+  password: MWYyZDFlMmU2N2Rm
+kind: Secret
+metadata:
+  name: db-secrets
+  namespace: myspace
+type: Opaque
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deployoneservice
+  namespace: myspace
+  labels:
+    prometheus-enabled: "true"
+spec:
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+  selector:
+    app: deploy1
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deploytwoservice
+  namespace: myspace
+  labels:
+    prometheus-enabled: "true"
+spec:
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+  selector:
+    app: deploy2
+  type: ClusterIP
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-autoscaler-deploy1
+  namespace: myspace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: deployment1
+  minReplicas: 2
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 60
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-autoscaler-deploy2
+  namespace: myspace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: deployment2
+  minReplicas: 2
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 60
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: customuser1
+  namespace: myspace
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: customuser2
+  namespace: myspace
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: jenkins-helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: customuser1
+  namespace: myspace
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: customuser2
+  namespace: myspace
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: customuser3
+  namespace: myspace
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nginx-ingress-clusterrole
+  namespace: myspace
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - endpoints
+      - nodes
+      - pods
+      - secrets
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "extensions"
+      - "networking.k8s.io"
+    resources:
+      - ingresses
+      - ingressclasses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+        - events
+    verbs:
+        - create
+        - patch
+  - apiGroups:
+      - "extensions"
+      - "networking.k8s.io"
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+  - apiGroups:
+      - ''
+    resources:
+      - configmaps
+    resourceNames:
+      - ingress-controller-leader
+    verbs:
+      - get
+      - update
+  - apiGroups:
+      - ''
+    resources:
+      - configmaps
+    verbs:
+      - create
+  - apiGroups:
+      - ''
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nginx-ingress-role
+  namespace: myspace
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - pods
+      - secrets
+      - namespaces
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    resourceNames:
+      # Defaults to "<election-id>-<ingress-class>"
+      # Here: "<ingress-controller-leader>-<nginx>"
+      # This has to be adapted if you change either parameter
+      # when launching the nginx-ingress-controller.
+      - "ingress-controller-leader-nginx"
+    verbs:
+      - get
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - endpoints
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nginx-ingress-role-nisa-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nginx-ingress-role
+subjects:
+  - kind: ServiceAccount
+    name: customuser2
+    namespace: myspace
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nginx-ingress-clusterrole-nisa-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nginx-ingress-clusterrole
+subjects:
+  - kind: ServiceAccount
+    name: customuser2
+    namespace: myspace
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: myspace
+  name: pod-writer
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "watch", "list", "create", "update", "patch", "delete"]
+- apiGroups: ["extensions", "apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: write-pods
+  namespace: myspace
+subjects:
+- kind: User
+  name: customeruser3
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: pod-writer
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: limits
+  namespace: myspace
+spec:
+  limits:
+  - default:
+      cpu: 400m
+      memory: 1Gi
+    defaultRequest:
+      cpu: 200m
+      memory: 500Mi
+    type: Container
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: myspace
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-quota
+  namespace: myspace
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 5Gi
+    limits.cpu: "3"
+    limits.memory: 10Gi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: object-quota
+  namespace: myspace
+spec:
+  hard:
+    configmaps: "10"
+    persistentvolumeclaims: "4"
+    replicationcontrollers: "20"
+    secrets: "10"
+    services: "10"
+    services.loadbalancers: "2"
+---

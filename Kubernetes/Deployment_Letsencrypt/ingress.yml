@@ -1,0 +1,69 @@
+#kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.0/deploy/static/provider/cloud/deploy.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-rules
+  namespace: myspace
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # reference production issuer
+    cert-manager.io/issuer: "letsencrypt-prod"
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - sample.narasimhakubernetes.xyz
+    # reference secret for production TLS certificate
+    secretName: miniapi-production-certificate
+  rules:
+   - host: sample.narasimhakubernetes.xyz
+     http:
+      paths:
+      - path: /v1
+        pathType: Prefix
+        backend:
+          service:
+            name: deployoneservice
+            port:
+              number: 80
+      - path: /v2
+        pathType: Prefix
+        backend:
+          service:
+            name: deploytwoservice
+            port:
+              number: 80
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-rules
+  namespace: kube-system
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # reference production issuer
+    cert-manager.io/issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - sample.narasimhakubernetes.xyz
+    # reference secret for production TLS certificate
+    secretName: miniapi-production-certificate
+  rules:
+   - host: sample.narasimhakubernetes.xyz
+     http:
+      paths:
+      - path: /dashboard
+        pathType: Prefix
+        backend:
+          service:
+            name: kubernetes-dashboard
+            port:
+              number: 443
