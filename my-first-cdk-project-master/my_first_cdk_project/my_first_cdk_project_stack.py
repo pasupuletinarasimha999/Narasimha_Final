@@ -10,7 +10,7 @@ class MyArtifactBucketStack(core.Stack):
     def __init__(self, scope: core.Construct, id: str, is_prod=False, ** kwargs) -> None:
         super().__init__(scope, id, **kwargs)
 
-        # The code that defines your stack goes here
+        # The code that definess your stack goes here
 
         mykey = _kms.Key.from_key_arn(self,
                                       "myKeyId",
